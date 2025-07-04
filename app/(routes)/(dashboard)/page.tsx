@@ -1,5 +1,11 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import TaskCard from '../../components/TaskCard';
 import EmailSection from '../../components/EmailSection';
+import { getSmartMailAssistantSuggestions } from '../../lib/ai/smart-mail-agent';
+import { ImportantEmail, SuggestedNextStep } from '../../lib/ai/types';
+import { EmailMessage } from '../../lib/email/types';
 
 // 定义任务类型
 interface Task {
@@ -11,6 +17,54 @@ interface Task {
   status: 'pending' | 'in-progress' | 'completed';
   tags: string[];
 }
+
+const mockEmails: EmailMessage[] = [
+  {
+    id: 'email-1',
+    uid: 1,
+    subject: 'Urgent: Action Required on Project X',
+    from: { name: 'Alice', address: 'alice@example.com' },
+    to: [],
+    date: new Date(),
+    text: 'Please review the attached document and provide your feedback by end of day.',
+    attachments: [],
+    flags: [],
+    isRead: false,
+    isFlagged: false,
+    isAnswered: false,
+    isDeleted: false,
+  },
+  {
+    id: 'email-2',
+    uid: 2,
+    subject: 'Meeting Reminder: Project Sync',
+    from: { name: 'Bob', address: 'bob@example.com' },
+    to: [],
+    date: new Date(),
+    text: 'Just a reminder about our project sync meeting tomorrow at 10 AM.',
+    attachments: [],
+    flags: [],
+    isRead: true,
+    isFlagged: false,
+    isAnswered: false,
+    isDeleted: false,
+  },
+  {
+    id: 'email-3',
+    uid: 3,
+    subject: 'Weekly Report',
+    from: { name: 'Charlie', address: 'charlie@example.com' },
+    to: [],
+    date: new Date(),
+    text: 'Here is the weekly report for your review.',
+    attachments: [],
+    flags: [],
+    isRead: false,
+    isFlagged: false,
+    isAnswered: false,
+    isDeleted: false,
+  },
+];
 
 export default function HomePage() {
   // 模拟任务数据
@@ -53,33 +107,64 @@ export default function HomePage() {
     }
   ];
 
-  // 模拟重要邮件数据
-  const importantEmails = [
-    {
-      id: 1,
-      from: "项目经理",
-      subject: "紧急：项目进度调整通知",
-      preview: "由于客户需求变更，需要调整本周的开发计划...",
-      time: "10:30",
-      unread: true
-    },
-    {
-      id: 2,
-      from: "技术总监",
-      subject: "代码质量检查结果",
-      preview: "本周的代码质量检查已完成，整体质量良好...",
-      time: "09:15",
-      unread: false
-    },
-    {
-      id: 3,
-      from: "产品经理",
-      subject: "新功能需求确认",
-      preview: "关于用户反馈的新功能需求，请确认技术可行性...",
-      time: "昨天",
-      unread: true
-    }
-  ];
+  const [importantEmails, setImportantEmails] = useState<ImportantEmail[]>([]);
+  const [suggestedNextSteps, setSuggestedNextSteps] = useState<SuggestedNextStep[]>([]);
+
+  useEffect(() => {
+    // 模拟一些邮件数据，以便 getSmartMailAssistantSuggestions 可以处理
+    const mockEmails: EmailMessage[] = [
+      {
+        id: 'email-1',
+        uid: 1,
+        subject: 'Urgent: Action Required on Project X',
+        from: { name: 'Alice', address: 'alice@example.com' },
+        to: [],
+        date: new Date(),
+        text: 'Please review the attached document and provide your feedback by end of day.',
+        attachments: [],
+        flags: [],
+        isRead: false,
+        isFlagged: false,
+        isAnswered: false,
+        isDeleted: false,
+      },
+      {
+        id: 'email-2',
+        uid: 2,
+        subject: 'Meeting Reminder: Project Sync',
+        from: { name: 'Bob', address: 'bob@example.com' },
+        to: [],
+        date: new Date(),
+        text: 'Just a reminder about our project sync meeting tomorrow at 10 AM.',
+        attachments: [],
+        flags: [],
+        isRead: true,
+        isFlagged: false,
+        isAnswered: false,
+        isDeleted: false,
+      },
+      {
+        id: 'email-3',
+        uid: 3,
+        subject: 'Weekly Report',
+        from: { name: 'Charlie', address: 'charlie@example.com' },
+        to: [],
+        date: new Date(),
+        text: 'Here is the weekly report for your review.',
+        attachments: [],
+        flags: [],
+        isRead: false,
+        isFlagged: false,
+        isAnswered: false,
+        isDeleted: false,
+      },
+    ];
+
+    getSmartMailAssistantSuggestions(mockEmails).then(result => {
+      setImportantEmails(result.importantEmails);
+      setSuggestedNextSteps(result.suggestedNextSteps);
+    });
+  }, []);
 
   return (
     <div className="p-6">
@@ -114,9 +199,31 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 重要邮件 - 占据1/3宽度 */}
-        <div className="lg:col-span-1">
-          <EmailSection emails={importantEmails} />
+        {/* 重要邮件和建议的下一步工作 - 占据1/3宽度 */}
+        <div className="lg:col-span-1 space-y-6">
+          {importantEmails.length > 0 && (
+            <EmailSection title="重要邮件" emails={importantEmails.map(ie => {
+              // 查找对应的原始邮件数据，以便 EmailSection 可以正确渲染
+              const originalEmail = mockEmails.find(e => e.id === ie.id);
+              return originalEmail ? { ...originalEmail, subject: ie.subject, preview: ie.summary } : null;
+            }).filter(Boolean) as any} />
+          )}
+
+          {suggestedNextSteps.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">建议的下一步工作</h2>
+              <ul className="list-disc pl-5 space-y-2">
+                {suggestedNextSteps.map((step, index) => (
+                  <li key={index} className="text-gray-700">
+                    {step.description}
+                    {step.relatedEmailId && (
+                      <span className="ml-2 text-blue-500 text-sm"> (相关邮件 ID: {step.relatedEmailId})</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     </div>

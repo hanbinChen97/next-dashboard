@@ -1,6 +1,8 @@
+import { EmailAddress } from '../lib/email/types';
+
 interface Email {
   id: number;
-  from: string;
+  from: EmailAddress;
   subject: string;
   preview: string;
   time: string;
@@ -8,15 +10,16 @@ interface Email {
 }
 
 interface EmailSectionProps {
+  title: string;
   emails: Email[];
 }
 
-export default function EmailSection({ emails }: EmailSectionProps) {
+export default function EmailSection({ title, emails }: EmailSectionProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">重要邮件</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-500">共 {emails.length} 封</span>
             <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">
@@ -40,7 +43,7 @@ export default function EmailSection({ emails }: EmailSectionProps) {
                     <span className={`text-sm font-medium ${
                       email.unread ? 'text-blue-900' : 'text-gray-900'
                     }`}>
-                      {email.from}
+                      {email.from.name || email.from.address}
                     </span>
                     {email.unread && (
                       <span className="w-2 h-2 bg-blue-500 rounded-full"></span>

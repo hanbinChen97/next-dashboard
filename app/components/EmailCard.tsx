@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { EmailMessage } from '../lib/email/types';
 import { EmailParser } from '../lib/email/email-parser';
 import { markEmailAsRead, markEmailAsUnread, deleteEmail } from '../lib/email/_action_server';
+import { renderEmail } from './EmailView.server';
 
 interface EmailCardProps {
   email: EmailMessage;
@@ -12,6 +13,14 @@ interface EmailCardProps {
 
 export function EmailCard({ email, onUpdate }: EmailCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [renderedHtml, setRenderedHtml] = useState('');
+
+  useEffect(() => {
+    if (isExpanded && email.html && !renderedHtml) {
+      renderEmail(email.html).then(setRenderedHtml);
+    }
+  }, [isExpanded, email.html, renderedHtml]);
+
   const preview = EmailParser.getEmailPreview(email);
   const formattedDate = new Date(email.date).toLocaleString('zh-CN', {
     year: 'numeric',
@@ -143,16 +152,7 @@ export function EmailCard({ email, onUpdate }: EmailCardProps) {
           <div className="mb-4">
             <h4 className="font-medium text-gray-700 mb-2">邮件内容:</h4>
             <div className="bg-white p-3 rounded border text-sm text-gray-900 whitespace-pre-wrap max-h-96 overflow-y-auto">
-              {email.text ? (
-                <div className="text-gray-900">{email.text}</div>
-              ) : email.html ? (
-                <div 
-                  className="text-gray-900"
-                  dangerouslySetInnerHTML={{ __html: email.html }} 
-                />
-              ) : (
-                <div className="text-gray-500">无内容</div>
-              )}
+              {renderedHtml && <iframe srcDoc={renderedHtml} className="w-full h-full" />}
             </div>
           </div>
           
@@ -198,4 +198,4 @@ export function EmailCard({ email, onUpdate }: EmailCardProps) {
       </div>
     </div>
   );
-} 
+}

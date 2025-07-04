@@ -2,6 +2,11 @@
 
 import { EmailService } from './email-service';
 import { EmailFetchOptions } from './types';
+import { invalidateCache } from '../utils/cache';
+
+const EMAIL_CACHE_KEY_PREFIX = 'email_cache_';
+
+const getEmailCacheKey = (folder: string = 'INBOX') => `${EMAIL_CACHE_KEY_PREFIX}${folder}`;
 
 /**
  * Server action to get emails
@@ -54,7 +59,9 @@ export async function markEmailAsRead(uid: number) {
   try {
     const emailService = EmailService.getInstance();
     const result = await emailService.markAsRead(uid);
-    
+    if (result.success) {
+      invalidateCache(getEmailCacheKey()); // Invalidate INBOX cache
+    }
     return {
       success: result.success,
       error: result.error,
@@ -75,7 +82,9 @@ export async function markEmailAsUnread(uid: number) {
   try {
     const emailService = EmailService.getInstance();
     const result = await emailService.markAsUnread(uid);
-    
+    if (result.success) {
+      invalidateCache(getEmailCacheKey()); // Invalidate INBOX cache
+    }
     return {
       success: result.success,
       error: result.error,
@@ -96,7 +105,9 @@ export async function deleteEmail(uid: number) {
   try {
     const emailService = EmailService.getInstance();
     const result = await emailService.deleteEmail(uid);
-    
+    if (result.success) {
+      invalidateCache(getEmailCacheKey()); // Invalidate INBOX cache
+    }
     return {
       success: result.success,
       error: result.error,
@@ -151,4 +162,4 @@ export async function testEmailConnection() {
       error: error instanceof Error ? error.message : 'Unknown error occurred',
     };
   }
-} 
+}

@@ -5,6 +5,9 @@ import { useEmails } from '../../hooks/useEmails';
 import { EmailList } from '../../components/EmailList';
 import { EmailFetchOptions, EmailFolder } from '../../lib/email/types';
 import { getEmailFolders } from '../../lib/email/_action_server';
+import { getSmartMailAssistantSuggestions } from '../../lib/ai/smart-mail-agent';
+import EmailSection from '../../components/EmailSection';
+import { ImportantEmail, SuggestedNextStep } from '../../lib/ai/types';
 
 export default function MailsPage() {
   const [emailOptions, setEmailOptions] = useState<EmailFetchOptions>({
@@ -12,25 +15,19 @@ export default function MailsPage() {
     limit: 20,
     unreadOnly: false,
   });
-  const [folders, setFolders] = useState<EmailFolder[]>([]);
+  const [importantEmails, setImportantEmails] = useState<ImportantEmail[]>([]);
+  const [suggestedNextSteps, setSuggestedNextSteps] = useState<SuggestedNextStep[]>([]);
 
-  const { emails, loading, error, total, refetch, connectionStatus } = useEmails(emailOptions);
+  const { emails, loading, error, total, refetch, connectionStatus, folders } = useEmails(emailOptions);
 
-  // Load folders on component mount
   useEffect(() => {
-    const loadFolders = async () => {
-      try {
-        const result = await getEmailFolders();
-        if (result.success && result.data.folders) {
-          setFolders(result.data.folders);
-        }
-      } catch (error) {
-        console.error('Failed to load folders:', error);
-      }
-    };
-
-    loadFolders();
-  }, []);
+    if (emails.length > 0) {
+      getSmartMailAssistantSuggestions(emails).then(result => {
+        setImportantEmails(result.importantEmails);
+        setSuggestedNextSteps(result.suggestedNextSteps);
+      });
+    }
+  }, [emails]);
 
   const handleRefresh = () => {
     refetch();
@@ -69,6 +66,36 @@ export default function MailsPage() {
         )}
       </div>
       
+      {importantEmails.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">重要邮件</h2>
+          <EmailList
+            emails={importantEmails.map(ie => emails.find(e => e.id === ie.id)).filter(Boolean) as any}
+            loading={loading}
+            error={error}
+            onUpdate={refetch}
+          />
+        </div>
+      )}
+
+      {suggestedNextSteps.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">建议的下一步工作</h2>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <ul className="list-disc pl-5 space-y-2">
+              {suggestedNextSteps.map((step, index) => (
+                <li key={index} className="text-gray-700">
+                  {step.description}
+                  {step.relatedEmailId && (
+                    <span className="ml-2 text-blue-500 text-sm"> (相关邮件 ID: {step.relatedEmailId})</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">

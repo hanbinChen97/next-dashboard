@@ -1,10 +1,12 @@
-import imaps from 'imap-simple';
+import Imap from 'node-imap';
+import { simpleParser } from 'mailparser';
 import { EmailService, EmailMessage, EmailFolder, EmailConnectionConfig, EmailFetchOptions } from './types';
 import { EmailParser } from './email-parser';
 
 export class ExchangeImapService implements EmailService {
-  private connection: any = null;
+  private imap: Imap;
   private config: EmailConnectionConfig;
+  private connectionPromise: Promise<void> | null = null;
 
   constructor() {
     this.config = {
@@ -14,220 +16,213 @@ export class ExchangeImapService implements EmailService {
       password: process.env.EXCHANGE_KEY || '',
       tls: true,
       tlsOptions: {
-        rejectUnauthorized: false, // Allow self-signed certificates
+        rejectUnauthorized: false,
       },
-      authTimeout: 30000, // 30 seconds timeout
-      connTimeout: 30000, // 30 seconds timeout
     };
-    
-    // Debug: Log configuration (without password)
-    console.log('IMAP Config:', {
-      host: this.config.host,
-      port: this.config.port,
-      username: this.config.username,
-      tls: this.config.tls,
-      authTimeout: this.config.authTimeout,
-      connTimeout: this.config.connTimeout,
+
+    this.imap = new Imap({
+        user: this.config.username,
+        password: this.config.password,
+        host: this.config.host,
+        port: this.config.port,
+        tls: this.config.tls,
+        tlsOptions: this.config.tlsOptions,
+        authTimeout: 30000,
+        connTimeout: 30000,
     });
   }
 
-  /**
-   * Connect to Exchange IMAP server
-   */
   async connect(): Promise<void> {
-    try {
-      if (this.connection) {
-        return; // Already connected
-      }
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
 
-      console.log('Connecting to Exchange IMAP server...');
-      
-      // Try different authentication methods for Exchange
-      const connectionConfig = {
-        ...this.config,
-        // Try to force basic authentication
-        authMethod: 'PLAIN',
-        user: this.config.username, // imap-simple expects 'user' instead of 'username'
-      };
-      
-      console.log('Using auth method:', connectionConfig.authMethod);
-      
-      // For Exchange servers, sometimes the username needs to be in domain\username format
-      if (connectionConfig.user && !connectionConfig.user.includes('\\') && !connectionConfig.user.includes('@')) {
-        connectionConfig.user = `rwth-aachen.de\\${connectionConfig.user}`;
-        console.log('Modified username to domain format:', connectionConfig.user);
-      }
-      
-      this.connection = await imaps.connect({
-        imap: connectionConfig,
+    this.connectionPromise = new Promise((resolve, reject) => {
+      this.imap.once('ready', () => {
+        console.log('Successfully connected to Exchange IMAP server');
+        resolve();
       });
 
-      console.log('Successfully connected to Exchange IMAP server');
-    } catch (error) {
-      console.error('Failed to connect to Exchange IMAP server:', error);
-      throw new Error(`IMAP connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+      this.imap.once('error', (err: Error) => {
+        console.error('IMAP connection error:', err);
+        this.connectionPromise = null;
+        reject(err);
+      });
+
+      this.imap.once('end', () => {
+        console.log('IMAP connection ended');
+        this.connectionPromise = null;
+      });
+
+      this.imap.connect();
+    });
+
+    return this.connectionPromise;
   }
 
-  /**
-   * Disconnect from Exchange IMAP server
-   */
   async disconnect(): Promise<void> {
-    try {
-      if (this.connection) {
-        await this.connection.end();
-        this.connection = null;
-        console.log('Disconnected from Exchange IMAP server');
-      }
-    } catch (error) {
-      console.error('Error disconnecting from Exchange IMAP server:', error);
-    }
-  }
-
-  /**
-   * List available folders
-   */
-  async listFolders(): Promise<EmailFolder[]> {
-    try {
-      await this.ensureConnection();
-      const boxes = await this.connection.imap.getBoxes();
-      if (!boxes || typeof boxes !== 'object') {
-        console.warn('IMAP getBoxes() 返回空或无效:', boxes);
-        return [];
-      }
-      const parseBoxes = (boxObj: any, path = ''): EmailFolder[] => {
-        if (!boxObj || typeof boxObj !== 'object') return [];
-        return Object.entries(boxObj).flatMap(([name, info]: [string, any]) => {
-          const fullPath = path ? path + info.delimiter + name : name;
-          const folder: EmailFolder = {
-            name,
-            path: fullPath,
-            delimiter: info.delimiter || '/',
-            attributes: info.attribs || [],
-            flags: info.flags || [],
-          };
-          if (info.children) {
-            return [folder, ...parseBoxes(info.children, fullPath)];
-          }
-          return [folder];
-        });
-      };
-      return parseBoxes(boxes);
-    } catch (error) {
-      console.error('Error listing folders:', error);
-      throw new Error(`Failed to list folders: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  /**
-   * Fetch emails from specified folder
-   */
-  async fetchEmails(options: EmailFetchOptions = {}): Promise<EmailMessage[]> {
-    try {
-      await this.ensureConnection();
-      
-      const folder = options.folder || 'INBOX';
-      const limit = options.limit || 50;
-      const offset = options.offset || 0;
-      
-      console.log(`Fetching emails from ${folder}, limit: ${limit}, offset: ${offset}`);
-      
-      // Open the folder
-      await this.connection.openBox(folder);
-      
-      // Build search criteria
-      const searchCriteria = this.buildSearchCriteria(options);
-      
-      // Fetch emails
-      const messages = await this.connection.search(searchCriteria, {
-        bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT'],
-        struct: true,
-      });
-      
-      // Sort messages by date (newest first) and apply pagination
-      const sortedMessages = messages.sort((a: any, b: any) => {
-        // Get dates from messages
-        const dateA = this.extractDateFromMessage(a);
-        const dateB = this.extractDateFromMessage(b);
-        return dateB.getTime() - dateA.getTime(); // Newest first
-      });
-      
-      const paginatedMessages = sortedMessages.slice(offset, offset + limit);
-      
-      // Parse emails
-      const emails: EmailMessage[] = [];
-      for (const message of paginatedMessages) {
-        try {
-          const email = await EmailParser.parseEmail(message);
-          emails.push(email);
-        } catch (parseError) {
-          console.warn('Failed to parse email:', parseError);
-          // Continue with other emails
+    return new Promise((resolve) => {
+        if (this.imap.state !== 'disconnected') {
+            this.imap.end();
         }
-      }
-      
-      console.log(`Successfully fetched ${emails.length} emails`);
-      return emails;
-    } catch (error) {
-      console.error('Error fetching emails:', error);
-      throw new Error(`Failed to fetch emails: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+        resolve();
+    });
   }
 
-  /**
-   * Mark email as read
-   */
+  async listFolders(): Promise<EmailFolder[]> {
+    await this.connect();
+    return new Promise((resolve, reject) => {
+      this.imap.getBoxes((err, boxes) => {
+        if (err) {
+          return reject(err);
+        }
+        const parseBoxes = (boxObj: any, path = ''): EmailFolder[] => {
+          if (!boxObj || typeof boxObj !== 'object') return [];
+          return Object.entries(boxObj).flatMap(([name, info]: [string, any]) => {
+            const fullPath = path ? path + info.delimiter + name : name;
+            const folder: EmailFolder = {
+              name,
+              path: fullPath,
+              delimiter: info.delimiter || '/',
+              attributes: info.attribs || [],
+              flags: info.flags || [],
+            };
+            if (info.children) {
+              return [folder, ...parseBoxes(info.children, fullPath)];
+            }
+            return [folder];
+          });
+        };
+        resolve(parseBoxes(boxes));
+      });
+    });
+  }
+
+  async fetchEmails(options: EmailFetchOptions = {}): Promise<EmailMessage[]> {
+    await this.connect();
+    const folder = options.folder || 'INBOX';
+
+    return new Promise((resolve, reject) => {
+      this.imap.openBox(folder, true, (err, box) => {
+        if (err) {
+          return reject(err);
+        }
+
+        const searchCriteria = this.buildSearchCriteria(options);
+        this.imap.search(searchCriteria, (err, uids) => {
+          if (err) {
+            return reject(err);
+          }
+
+          if (uids.length === 0) {
+            return resolve([]);
+          }
+
+          const fetchPromises: Promise<EmailMessage>[] = [];
+
+          const f = this.imap.fetch(uids, { bodies: '' });
+
+          f.on('message', (msg, seqno) => {
+            let buffer = '';
+            let attrsPromiseResolve: (value: any) => void;
+            const attrsPromise = new Promise(resolve => { attrsPromiseResolve = resolve; });
+
+            const messagePromise = new Promise<EmailMessage>(async (resolveMessage) => {
+              msg.on('body', (stream) => {
+                stream.on('data', (chunk) => {
+                  buffer += chunk.toString('utf8');
+                });
+              });
+              msg.once('end', async () => {
+                try {
+                  const parsed = await simpleParser(buffer);
+                  const attrs = await attrsPromise;
+                  resolveMessage(EmailParser.parseEmail(parsed, attrs));
+                } catch (parseError) {
+                  console.warn('Failed to parse email in fetchEmails:', parseError);
+                  // Resolve with a partial email or reject, depending on desired error handling
+                  resolveMessage({ id: `error_${seqno}`, uid: seqno, subject: 'Error parsing email', from: { address: '' }, to: [], date: new Date(), attachments: [], flags: [], isRead: false, isFlagged: false, isAnswered: false, isDeleted: false });
+                }
+              });
+              msg.once('attributes', (a) => {
+                attrsPromiseResolve(a);
+              });
+            });
+            fetchPromises.push(messagePromise);
+          });
+
+          f.once('error', (err) => {
+            console.error('Fetch error:', err);
+            reject(err);
+          });
+
+          f.once('end', async () => {
+            try {
+              const emails = await Promise.all(fetchPromises);
+              // Sort by date (newest first)
+              emails.sort((a, b) => b.date.getTime() - a.date.getTime());
+              
+              // Apply limit and offset
+              const paginatedEmails = emails.slice(options.offset || 0, (options.offset || 0) + (options.limit || emails.length));
+
+              resolve(paginatedEmails);
+            } catch (allPromisesError) {
+              reject(allPromisesError);
+            }
+          });
+        });
+      });
+    });
+  }
+
   async markAsRead(uid: number): Promise<void> {
-    try {
-      await this.ensureConnection();
-      await this.connection.addFlags(uid, '\\Seen');
-      console.log(`Marked email ${uid} as read`);
-    } catch (error) {
-      console.error('Error marking email as read:', error);
-      throw new Error(`Failed to mark email as read: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await this.connect();
+    return new Promise((resolve, reject) => {
+        this.imap.addFlags(uid, '\\Seen', (err) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve();
+        });
+    });
   }
 
-  /**
-   * Mark email as unread
-   */
   async markAsUnread(uid: number): Promise<void> {
-    try {
-      await this.ensureConnection();
-      await this.connection.delFlags(uid, '\\Seen');
-      console.log(`Marked email ${uid} as unread`);
-    } catch (error) {
-      console.error('Error marking email as unread:', error);
-      throw new Error(`Failed to mark email as unread: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await this.connect();
+    return new Promise((resolve, reject) => {
+        this.imap.delFlags(uid, '\\Seen', (err) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve();
+        });
+    });
   }
 
-  /**
-   * Delete email
-   */
   async deleteEmail(uid: number): Promise<void> {
-    try {
-      await this.ensureConnection();
-      await this.connection.addFlags(uid, '\\Deleted');
-      console.log(`Marked email ${uid} for deletion`);
-    } catch (error) {
-      console.error('Error deleting email:', error);
-      throw new Error(`Failed to delete email: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await this.connect();
+    return new Promise((resolve, reject) => {
+        this.imap.addFlags(uid, '\\Deleted', (err) => {
+            if (err) {
+                return reject(err);
+            }
+            resolve();
+        });
+    });
   }
 
-  /**
-   * Ensure connection is established
-   */
-  private async ensureConnection(): Promise<void> {
-    if (!this.connection) {
-      await this.connect();
-    }
+  isConnected(): boolean {
+    return this.imap.state === 'authenticated';
   }
 
-  /**
-   * Build search criteria based on options
-   */
+  getServerInfo(): { host: string; port: number; username: string } {
+    return {
+      host: this.config.host,
+      port: this.config.port,
+      username: this.config.username,
+    };
+  }
+
   private buildSearchCriteria(options: EmailFetchOptions): any[] {
     const criteria: any[] = ['ALL'];
     
@@ -235,8 +230,10 @@ export class ExchangeImapService implements EmailService {
       criteria.push('UNSEEN');
     }
     
-    if (options.since) {
-      criteria.push(['SINCE', options.since]);
+    if (options.startDate) {
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      criteria.push(['SINCE', options.startDate || oneMonthAgo]);
     }
     
     if (options.search) {
@@ -245,45 +242,4 @@ export class ExchangeImapService implements EmailService {
     
     return criteria;
   }
-
-  /**
-   * Extract date from message for sorting
-   */
-  private extractDateFromMessage(message: any): Date {
-    try {
-      if (message.parts) {
-        for (const part of message.parts) {
-          if (part.which === 'HEADER.FIELDS (FROM TO SUBJECT DATE)' && part.body && part.body.date) {
-            const dateStr = Array.isArray(part.body.date) ? part.body.date[0] : part.body.date;
-            if (dateStr) {
-              return new Date(dateStr);
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to extract date from message:', error);
-    }
-    
-    // Fallback to current date if extraction fails
-    return new Date();
-  }
-
-  /**
-   * Get connection status
-   */
-  isConnected(): boolean {
-    return this.connection !== null;
-  }
-
-  /**
-   * Get server configuration (without sensitive data)
-   */
-  getServerInfo(): { host: string; port: number; username: string } {
-    return {
-      host: this.config.host,
-      port: this.config.port,
-      username: this.config.username,
-    };
-  }
-} 
+}

@@ -7,7 +7,7 @@ export interface EmailAttachment {
   filename: string;
   contentType: string;
   size: number;
-  content: Buffer;
+  
 }
 
 export interface EmailMessage {
@@ -57,6 +57,7 @@ export interface EmailFetchOptions {
   since?: Date;
   search?: string;
   unreadOnly?: boolean;
+  startDate?: Date;
 }
 
 export interface EmailService {
