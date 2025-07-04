@@ -4,3 +4,6 @@
 
 帮我从我的邮件里 mock 几个紧急 data, 显示在 app/(routes)/(dashboard)/page.tsx
 <EmailSection emails={importantEmails} />
+
+todo:
+llm

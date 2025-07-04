@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useEmails } from '../../hooks/useEmails';
-import { EmailList } from '../../components/EmailList';
+import { EmailList } from '../../components/email/EmailList';
 import { EmailFetchOptions, EmailFolder } from '../../lib/email/types';
 import { getEmailFolders } from '../../lib/email/_action_server';
 import { getSmartMailAssistantSuggestions } from '../../lib/ai/smart-mail-agent';
-import EmailSection from '../../components/EmailSection';
+import EmailSection from '../../components/email/EmailSection';
 import { ImportantEmail, SuggestedNextStep } from '../../lib/ai/types';
 
 export default function MailsPage() {

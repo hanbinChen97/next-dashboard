@@ -1,4 +1,4 @@
-import ProjectGrid from '../../../components/ProjectGrid';
+import ProjectGrid from '../../../components/dashboard/ProjectGrid';
 
 export default function ProjectsPage() {
   // 模拟项目数据

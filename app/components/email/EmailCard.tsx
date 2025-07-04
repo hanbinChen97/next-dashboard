@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { EmailMessage } from '../lib/email/types';
-import { EmailParser } from '../lib/email/email-parser';
-import { markEmailAsRead, markEmailAsUnread, deleteEmail } from '../lib/email/_action_server';
+import { EmailMessage } from '../../lib/email/types';
+import { EmailParser } from '../../lib/email/email-parser';
+import { markEmailAsRead, markEmailAsUnread, deleteEmail } from '../../lib/email/_action_server';
 import { renderEmail } from './EmailView.server';
 
 interface EmailCardProps {

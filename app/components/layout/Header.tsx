@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import LoginButton from './LoginButton';
-import UserAvatar from './UserAvatar';
+import LoginButton from '../common/LoginButton';
+import UserAvatar from '../common/UserAvatar';
 
 export default function Header() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

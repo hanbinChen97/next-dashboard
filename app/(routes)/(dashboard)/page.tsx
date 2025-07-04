@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import TaskCard from '../../components/TaskCard';
-import EmailSection from '../../components/EmailSection';
+import TaskCard from '../../components/dashboard/TaskCard';
+import EmailSection from '../../components/email/EmailSection';
 import { getSmartMailAssistantSuggestions } from '../../lib/ai/smart-mail-agent';
 import { ImportantEmail, SuggestedNextStep } from '../../lib/ai/types';
 import { EmailMessage } from '../../lib/email/types';

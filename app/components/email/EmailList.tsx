@@ -1,7 +1,7 @@
 'use client';
 
 import { EmailCard } from './EmailCard';
-import { EmailMessage } from '../lib/email/types';
+import { EmailMessage } from '../../lib/email/types';
 
 interface EmailListProps {
   emails: EmailMessage[];

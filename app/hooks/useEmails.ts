@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { getEmails, getEmailConnectionStatus, getEmailFolders } from '../lib/email/_action_server';
 import { EmailMessage, EmailFetchOptions, EmailFolder } from '../lib/email/types';
 import { getCache, setCache, invalidateCache } from '../lib/utils/cache';
@@ -21,6 +21,7 @@ interface UseEmailsReturn {
 const EMAIL_CACHE_EXPIRATION_MINUTES = 5; // 邮件缓存有效期 5 分钟
 const FOLDER_CACHE_EXPIRATION_MINUTES = 60; // 文件夹缓存有效期 60 分钟
 const CONNECTION_STATUS_CACHE_EXPIRATION_MINUTES = 1; // 连接状态缓存有效期 1 分钟
+const POLLING_INTERVAL_MILLISECONDS = 5 * 60 * 1000; // 每 5 分钟扫描一次新邮件
 
 export function useEmails(options: EmailFetchOptions = {}): UseEmailsReturn {
   const [emails, setEmails] = useState<EmailMessage[]>([]);
@@ -119,10 +120,23 @@ export function useEmails(options: EmailFetchOptions = {}): UseEmailsReturn {
     }
   };
 
+  const isMounted = useRef(false);
+
   useEffect(() => {
-    fetchEmails();
-    fetchConnectionStatus();
-    fetchFolders();
+    if (!isMounted.current) {
+      isMounted.current = true;
+      fetchEmails();
+      fetchConnectionStatus();
+      fetchFolders();
+    }
+
+    const intervalId = setInterval(() => {
+      fetchEmails();
+      fetchConnectionStatus();
+      fetchFolders();
+    }, POLLING_INTERVAL_MILLISECONDS);
+
+    return () => clearInterval(intervalId);
   }, [options.folder, options.limit, options.offset, options.unreadOnly]);
 
   const refetch = async () => {

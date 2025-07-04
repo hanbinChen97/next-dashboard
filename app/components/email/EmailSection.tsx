@@ -1,4 +1,4 @@
-import { EmailAddress } from '../lib/email/types';
+import { EmailAddress } from '../../lib/email/types';
 
 interface Email {
   id: number;

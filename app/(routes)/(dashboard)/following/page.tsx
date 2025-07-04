@@ -1,5 +1,5 @@
-import ProjectSummary from '@/app/components/ProjectSummary';
-import ActivityFeed from '../../../components/ActivityFeed';
+import ProjectSummary from '../../../components/dashboard/ProjectSummary';
+import ActivityFeed from '../../../components/dashboard/ActivityFeed';
 
 export default function FollowingPage() {
   // 模拟关注的项目数据
